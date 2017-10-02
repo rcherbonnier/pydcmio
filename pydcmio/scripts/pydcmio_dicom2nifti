@@ -14,7 +14,6 @@ import os
 import shutil
 import numpy
 import json
-import glob
 from datetime import datetime
 from pprint import pprint
 import textwrap
@@ -88,6 +87,17 @@ python $HOME/git/pydcmio/pydcmio/scripts/pydcmio_dicom2nifti \
 """
 
 
+def get_fname(_sid, _session, _protocol, _files, _index, _extension,
+              _acq_name=None):
+    suffix = "" if len(_files) == 1 else "_{}".format(str(_index))
+    acquisition = ""
+    if _acq_name is not None:
+        acquisition = "acq-{}_".format(_acq_name)
+    fname = "sub-{}_ses-{}_{}{}{}{}".format(
+        _sid, _session, acquisition, _protocol, suffix, _extension)
+    return fname
+
+
 def is_file(filearg):
     """ Type for argparse - checks that file exists but does not open.
     """
@@ -127,6 +137,14 @@ def get_cmd_line_args():
         required=True, metavar="<str>",
         help="the protocol name.")
     required.add_argument(
+        "-m", "--modality",
+        required=True, metavar="<str>",
+        help="the modality name.")
+    required.add_argument(
+        "-z", "--session",
+        required=True, metavar="<str>",
+        help="the session name.")
+    required.add_argument(
         "-d", "--dcmdir",
         required=True, metavar="<path>", type=is_directory,
         help="the folder that contains the DICOMs to be converted.")
@@ -161,6 +179,10 @@ def get_cmd_line_args():
         "-v", "--verbose",
         type=int, choices=[0, 1, 2], default=0,
         help="increase the verbosity level: 0 silent, [1, 2] verbose.")
+    required.add_argument(
+        "-a", "--acquisition",
+        default=None, metavar="<str>",
+        help="the acquisition name.")
 
     # Create a dict of arguments to pass to the 'main' function
     args = parser.parse_args()
@@ -192,17 +214,18 @@ if verbose > 0:
     pprint(runtime)
     print("[info] Inputs:")
     pprint(inputs)
+sid = inputs["sid"]
 if inputs["transcode"]:
     with open(inputs["transcode_table"], "rt") as open_file:
         transcoding = json.load(open_file)
-    if inputs["sid"] not in transcoding:
+    if sid not in transcoding:
         raise ValueError(
             "'{0}' subject identifier not in '{1}' transcoding table.".format(
-                inputs["sid"], inputs["transcode_table"]))
-    niidir = os.path.join(inputs["outdir"], transcoding[inputs["sid"]],
-                          inputs["protocol"])
-else:
-    niidir = os.path.join(inputs["outdir"], inputs["sid"], inputs["protocol"])
+                sid, inputs["transcode_table"]))
+    sid = transcoding[sid]
+niidir = os.path.join(
+    inputs["outdir"], "sub-" + sid, "ses-" + inputs["session"],
+    inputs["modality"])
 if inputs["erase"] and os.path.isdir(niidir):
     shutil.rmtree(niidir)
 if not os.path.isdir(niidir):
@@ -217,7 +240,7 @@ if inputs["dcm2niix"]:
     reoriented_and_cropped_files = []
     config_file = None
     files, bvecs, bvals, bids = dcm2niix(
-        inputs["dcmdir"], o=niidir, f=inputs["protocol"], z="y", b="y")
+        inputs["dcmdir"], o=niidir, f=inputs["protocol"], z="y", b="y", a="y")
 else:
     config_file = generate_config(
         niidir, anonymized=True, gzip=True, add_date=False,
@@ -235,26 +258,29 @@ Step 2: force the normalization of the generated files.
 """
 for index, path in enumerate(files):
     dirname, basename = os.path.split(path)
-    suffix = "" if index == 0 else str(index)
     dest_path = os.path.join(
-        dirname,
-        inputs["protocol"] + suffix + ".nii.gz")
+        dirname, get_fname(sid, inputs["session"], inputs["protocol"], files,
+                           index, ".nii.gz", inputs["acquisition"]))
     shutil.move(path, dest_path)
+    json_path = path[:-len(".nii.gz")] + ".json"
+    if os.path.isfile(json_path):
+        json_dest_path = os.path.join(
+            dirname, get_fname(sid, inputs["session"], inputs["protocol"],
+                               files, index, ".json", inputs["acquisition"]))
+        shutil.move(json_path, json_dest_path)
     files[index] = dest_path
 for index, path in enumerate(bvecs):
     dirname, basename = os.path.split(path)
-    suffix = "" if index == 0 else str(index)
     dest_path = os.path.join(
-        dirname,
-        inputs["protocol"] + suffix + ".bvecs")
+        dirname, get_fname(sid, inputs["session"], inputs["protocol"],
+                           files, index, ".bvecs", inputs["acquisition"]))
     shutil.move(path, dest_path)
     bvecs[index] = dest_path
 for index, path in enumerate(bvals):
     dirname, basename = os.path.split(path)
-    suffix = "" if index == 0 else str(index)
     dest_path = os.path.join(
-        dirname,
-        inputs["protocol"] + suffix + ".bvals")
+        dirname, get_fname(sid, inputs["session"], inputs["protocol"],
+                           files, index, ".bvals", inputs["acquisition"]))
     shutil.move(path, dest_path)
     bvals[index] = dest_path
 if verbose > 1:
@@ -312,10 +338,10 @@ logdir = os.path.join(niidir, "logs")
 if not os.path.isdir(logdir):
     os.mkdir(logdir)
 params = locals()
-outputs = dict([(name, params[name])
-                for name in ("config_file", "files", "reoriented_files",
-                             "reoriented_and_cropped_files", "bvecs",
-                             "bvals", "filled_nii_files", "figures", "bids")])
+outputs = dict([(_name, params[name])
+                for _name in ("config_file", "files", "reoriented_files",
+                              "reoriented_and_cropped_files", "bvecs",
+                              "bvals", "filled_nii_files", "figures", "bids")])
 for name, final_struct in [("inputs", inputs), ("outputs", outputs),
                            ("runtime", runtime)]:
     log_file = os.path.join(logdir, "{0}.json".format(name))

@@ -205,7 +205,7 @@ def dcm2nii(input, o, b):
     return files, reoriented_files, reoriented_and_cropped_files, bvecs, bvals
 
 
-def dcm2niix(input, o, f="%p", z="y", b="y"):
+def dcm2niix(_input, o, f="%p", z="y", b="y", a="y"):
     """ Dicom to nifti conversion using 'dcm2nii'.
 
     You can specify all the 'dcm2niix' command options as input function
@@ -245,7 +245,15 @@ def dcm2niix(input, o, f="%p", z="y", b="y"):
     """
     # Call dcm2nii
     dcm2niiprocess = Dcm2NiiWrapper("dcm2niix")
-    dcm2niiprocess(cmd=["dcm2niix", "-o", o, "-f", f, "-z", z, "-b", b, input])
+
+    # build command
+    cmd = ["dcm2niix", "-o", o, "-f", f, "-z", z]
+    bids_option = ["-b", b]
+    if b == "y" and a == "y":
+        bids_option = ["-ba", "y"]
+    cmd = cmd + bids_option + [_input]
+
+    dcm2niiprocess(cmd=cmd)
 
     # Format outputs: from nipype
     files = []
@@ -258,7 +266,10 @@ def dcm2niix(input, o, f="%p", z="y", b="y"):
         if not skip:
             out_file = None
             if line.startswith("Convert "):
-                fname = str(re.search("\S+/\S+", line).group(0))
+                # Remove end of the line with image dimensions
+                fname = "(".join(line.split("(")[:-1])[:-1]
+                # Remove beginning of the line to only keep filepath
+                fname = fname[fname.index(" DICOM as ") + len(" DICOM as "):]
                 output_dir = o
                 out_file = os.path.abspath(os.path.join(output_dir, fname))
                 # Extract bvals

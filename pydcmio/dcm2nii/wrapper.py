@@ -60,11 +60,20 @@ class Dcm2NiiWrapper(object):
             raise Dcm2NiiConfigurationError(self.cmd[0])
 
         # Execute the command
+        shell = False
+        args = self.cmd
+        orig_cmd = cmd = " ".join(self.cmd)
+        for special_char in [" ", "(", ")"]:
+            cmd.replace(special_char, "\{}".format(special_char))
+        if cmd != orig_cmd:
+            args = cmd
+            shell = True
         process = subprocess.Popen(
-            self.cmd,
+            args,
             env=self.environment,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE)
+            stderr=subprocess.PIPE,
+            shell=shell)
         self.stdout, self.stderr = process.communicate()
         self.exitcode = process.returncode
 

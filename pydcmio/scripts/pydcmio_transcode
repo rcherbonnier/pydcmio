@@ -86,6 +86,10 @@ parser.add_argument(
     "-r", "--transtable", dest="transcode_table", required=False,
     metavar="FILE", help="the transcoding table.", type=is_file)
 parser.add_argument(
+    "-k", "--keep_transtable", action="store_true",
+    help="If true, do not copy the transcoding table, but write to "
+         "the existing one.")
+parser.add_argument(
     "-o", "--outdir", dest="outdir", required=True, metavar="PATH",
     help="the folder that contains the generated transcoded table.",
     type=is_directory)
@@ -128,9 +132,12 @@ if args.directory is not None:
 Then copy or create the input transcoding table.
 """
 if args.transcode_table is not None:
-    transcode_table = os.path.join(args.outdir,
-                                   os.path.basename(args.transcode_table))
-    shutil.copy(args.transcode_table, transcode_table)
+    if args.keep_transtable:
+        transcode_table = args.transcode_table
+    else:
+        transcode_table = os.path.join(args.outdir,
+                                       os.path.basename(args.transcode_table))
+        shutil.copy(args.transcode_table, transcode_table)
 else:
     transcode_table = os.path.join(args.outdir, "transcoding.json")
     with open(transcode_table, "wt") as open_file:
